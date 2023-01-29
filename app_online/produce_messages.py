@@ -18,7 +18,7 @@ producer = KafkaProducer(
 )
 
 # Вчитување на податоците и отфрлање на колоната за класа на пациентот
-df = pd.read_csv("data/online.csv")
+df = pd.read_csv(r'..\data\online.csv')
 print(df.head())
 df.drop("Diabetes_binary", axis=1, inplace=True)
 
