@@ -1,45 +1,71 @@
-import logging
-import os, sys
+import os
+
+from pyspark.ml import PipelineModel
+from pyspark.ml.linalg import Vectors, VectorUDT
 from pyspark.sql import SparkSession
+from pyspark.sql.functions import *
 
-spark_version = '3.2.3'
-
-spark = SparkSession \
-    .builder \
-    .appName("StructuredStreaming") \
-    .getOrCreate()
+# Се вчитува моделот на почетокот на апликацијата и се гради SparkSession
+model = PipelineModel.load("models/11")
+spark = SparkSession.builder.appName("Domasna3-consumer").getOrCreate()
 
 
-df = spark \
-  .read \
-  .format("kafka") \
-  .option("kafka.bootstrap.servers", "localhost:9092") \
-  .option("subscribe", "health_data") \
-  .load()
+df = (
+    spark.readStream.format("kafka")
+    .option("kafka.bootstrap.servers", "localhost:9092")
+    # .option("host", "localhost")
+    # .option("port", 9092)
+    .option("subscribe", "health_data")
+    .load()
+)
 
-#df.selectExpr("CAST(key AS STRING)", "CAST(value AS STRING)")
-#
-# kafka_df = spark.readStream \
-#     .format("kafka") \
-#     .option("kafka.bootstrap.servers", "localhost:9092") \
-#     .option("kafka.security.protocol", "SSL") \
-#     .option("failOnDataLoss", "false") \
-#     .option("subscribe", "health_data") \
-#     .option("includeHeaders", "true") \
-#     .option("startingOffsets", "latest") \
-#     .option("spark.streaming.kafka.maxRatePerPartition", "50") \
-#     .load()
+print(type(df))
 
-# best_model = PipelineModel.load('best_model/best_model')
-#
-#
-# def func_call(df, batch_id):
-#     df.selectExpr("CAST(value AS STRING) as json")
-#     requests = df.rdd.map(lambda x: x.value).collect()
-#     logging.info(requests)
-#
-# query = kafka_df.writeStream \
-#     .format("STREAM TO STREAM") \
-#     .foreachBatch(func_call) \
-#     .trigger(processingTime="5 seconds") \
-#     .start().awaitTermination()
+# Се вчитува датасетот и се прави предикција со вчитаниот PipelineModel
+df = (
+    df.selectExpr("cast(value as string) as json")
+    # .select(from_json("json", schema).alias("data"))
+    .select("data.*")
+    .withColumn(
+        "all_features",
+        array(
+            [
+                col("HighBP"),
+                col("HighChol"),
+                col("CholCheck"),
+                col("BMI"),
+                col("Smoker"),
+                col("Stroke"),
+                col("HeartDiseaseorAttack"),
+                col("PhysActivity"),
+                col("Fruits"),
+                col("Veggies"),
+                col("HvyAlcoholConsump"),
+                col("AnyHealthcare"),
+                col("NoDocbcCost"),
+                col("GenHlth"),
+                col("MentHlth"),
+                col("PhysHlth"),
+                col("DiffWalk"),
+                col("Sex"),
+                col("Age"),
+                col("Education"),
+                col("Income"),
+            ]
+        ),
+    )
+    .withColumn(
+        "scaled_features", udf(lambda x: Vectors.dense(x), VectorUDT())("features")
+    )
+    .withColumn("prediction", model.transform(df).select("prediction"))
+)
+
+
+query = (
+    df.writeStream.format("kafka")
+    .option("kafka.bootstrap.servers", "localhost:9092")
+    .option("topic", "health_data_predicted")
+    .start()
+)
+
+query.awaitTermination()

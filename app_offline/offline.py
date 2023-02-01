@@ -141,7 +141,8 @@ def main():
     )
     models.append(lsvc1)
 
-    lsvc2 = LinearSVC(
+    lsvc2 = LinearSVC(  labelCol="Diabetes_binary", predictionCol="prediction", metricName="f1"
+        )
         maxIter=20, regParam=1, labelCol="Diabetes_binary", featuresCol="all_features"
     )
     models.append(lsvc2)
@@ -156,8 +157,7 @@ def main():
         predictions = pipelineModel.transform(test_spark_df)
 
         evaluator = MulticlassClassificationEvaluator(
-            labelCol="Diabetes_binary", predictionCol="prediction", metricName="f1"
-        )
+
         f1 = evaluator.evaluate(predictions)
 
         print(str(model) + " - F1: " + str(f1))
